@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视觉哨兵 · 摄像头异常监控</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo"><i></i></span>
+    <div class="brand-text">
+      <h1>视觉哨兵</h1>
+      <p>摄像头数据异常监控</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span id="statusBadge" class="badge idle"><i></i>未接入</span>
+    <button id="btnQuit" class="btn ghost">退出</button>
+  </div>
+</header>
+
+<section class="stats">
+  <div class="panel stat">
+    <div class="stat-head"><span>画面亮度</span><em>0-255</em></div>
+    <div class="stat-value"><span id="mBrightness">--</span></div>
+    <div class="stat-bar"><i id="barBrightness"></i></div>
+    <canvas id="sparkBrightness" class="spark"></canvas>
+  </div>
+  <div class="panel stat">
+    <div class="stat-head"><span>画面变化</span><em>帧差</em></div>
+    <div class="stat-value"><span id="mDiff">--</span></div>
+    <div class="stat-bar"><i id="barDiff"></i></div>
+    <canvas id="sparkDiff" class="spark"></canvas>
+  </div>
+  <div class="panel stat">
+    <div class="stat-head"><span>红绿占比</span><em>红 / 绿 %</em></div>
+    <div class="stat-value value-sm"><span id="mColor">--</span></div>
+    <div class="stat-bar"><i id="barColor"></i></div>
+    <canvas id="sparkColor" class="spark"></canvas>
+    <div class="stat-foot" id="colorHint">基准 --</div>
+  </div>
+  <div class="panel stat">
+    <div class="stat-head"><span>环境音量</span><em>dBFS</em></div>
+    <div class="stat-value"><span id="mAudio">--</span></div>
+    <div class="stat-bar"><i id="barAudio"></i></div>
+    <canvas id="sparkAudio" class="spark"></canvas>
+    <div class="stat-foot" id="audioHint">音频未启动</div>
+  </div>
+  <div class="panel stat">
+    <div class="stat-head"><span>区域数值</span><em>OCR</em></div>
+    <div class="stat-value"><span id="mOcr">--</span></div>
+    <div class="stat-foot" id="ocrHint">未启用数值识别</div>
+  </div>
+  <div class="panel stat">
+    <div class="stat-head"><span>帧率</span><em>FPS</em></div>
+    <div class="stat-value"><span id="mFps">--</span></div>
+    <div class="stat-foot" id="frameHint">已处理 0 帧</div>
+  </div>
+</section>
+
+<main>
+  <section class="panel preview-panel">
+    <div class="preview">
+      <img id="stream" src="/video_feed" alt="实时画面">
+      <div class="preview-empty" id="previewEmpty">
+        <strong>未接入视频源</strong>
+        <span>选择本地摄像头或视频文件后，点击「开始监控」</span>
+      </div>
+      <div class="preview-overlay top">
+        <span id="sourceLabel" class="chip">未选择视频源</span>
+        <span id="liveTag" class="live-badge off"><i></i><b>OFF</b></span>
+      </div>
+      <div class="preview-overlay bottom">
+        <span id="previewStatus" class="chip subtle">待机</span>
+        <span id="clock" class="chip subtle mono">--:--:--</span>
+      </div>
+      <div class="alarm-flash" id="alarmFlash"></div>
+      <canvas id="roiCanvas" class="roi-canvas"></canvas>
+    </div>
+    <div class="source-bar">
+      <select id="sourceType" title="视频源类型">
+        <option value="camera">本地摄像头</option>
+        <option value="file">视频文件</option>
+      </select>
+      <div class="source-group" id="cameraGroup">
+        <select id="cameraIndex" title="摄像头序号">
+          <option value="0">摄像头 #0</option>
+          <option value="1">摄像头 #1</option>
+          <option value="2">摄像头 #2</option>
+        </select>
+        <button id="btnScanCameras" class="btn ghost">扫描</button>
+      </div>
+      <div class="source-group hidden" id="fileGroup">
+        <input id="filePath" readonly placeholder="请选择本地视频文件">
+        <button id="btnPickFile" class="btn ghost">选择文件</button>
+        <label class="check"><input type="checkbox" id="loopPlay" checked>循环</label>
+      </div>
+      <button id="btnToggle" class="btn primary">开始监控</button>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="alarms">报警记录 <span id="alarmCount" class="count">0</span></button>
+      <button class="tab-btn" data-tab="settings">参数设置</button>
+    </div>
+
+    <div id="tab-alarms" class="tab-body">
+      <div class="alarm-toolbar">
+        <select id="alarmFilter">
+          <option value="">全部级别</option>
+          <option value="critical">仅严重</option>
+          <option value="warning">仅警告</option>
+        </select>
+        <label class="check"><input type="checkbox" id="soundAlert" checked>声音提醒</label>
+        <button id="btnClear" class="btn ghost small">清空</button>
+      </div>
+      <ul id="alarmList" class="alarm-list"></ul>
+      <div class="empty" id="alarmEmpty">
+        <strong>暂无报警</strong>
+        <span>检测到画面或声音异常时，会在此记录并保存截图</span>
+      </div>
+    </div>
+
+    <div id="tab-settings" class="tab-body hidden">
+      <p class="tip">阈值越小越灵敏，误报也会增多。调整后需点击底部「保存并生效」。</p>
+
+      <div class="group-title">画面检测</div>
+      <label class="switch-row"><span>启用画面检测</span><input type="checkbox" data-check="video.detect_enabled"></label>
+      <div class="field">
+        <div class="field-head"><label>亮度下限</label><span class="hint">低于判定黑屏</span><input type="number" data-key="video.brightness_min" min="0" max="120" step="1"></div>
+        <input type="range" data-key="video.brightness_min" min="0" max="120" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>亮度上限</label><span class="hint">高于判定过曝</span><input type="number" data-key="video.brightness_max" min="120" max="255" step="1"></div>
+        <input type="range" data-key="video.brightness_max" min="120" max="255" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>画面剧变阈值</label><span class="hint">帧差均值</span><input type="number" data-key="video.diff_threshold" min="2" max="100" step="0.5"></div>
+        <input type="range" data-key="video.diff_threshold" min="2" max="100" step="0.5">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>冻结帧差阈值</label><span class="hint">低于视为静止</span><input type="number" data-key="video.freeze_diff" min="0" max="5" step="0.1"></div>
+        <input type="range" data-key="video.freeze_diff" min="0" max="5" step="0.1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>冻结持续时长</label><span class="hint">秒</span><input type="number" data-key="video.freeze_seconds" min="2" max="180" step="1"></div>
+        <input type="range" data-key="video.freeze_seconds" min="2" max="180" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>红绿占比变化阈值</label><span class="hint">百分点</span><input type="number" data-key="video.color_threshold_percent" min="0.2" max="30" step="0.1"></div>
+        <input type="range" data-key="video.color_threshold_percent" min="0.2" max="30" step="0.1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>红绿变化持续时长</label><span class="hint">秒</span><input type="number" data-key="video.color_seconds" min="1" max="60" step="1"></div>
+        <input type="range" data-key="video.color_seconds" min="1" max="60" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>遮挡对比度阈值</label><span class="hint">低于视为细节丢失</span><input type="number" data-key="video.occlusion_contrast" min="0" max="30" step="0.5"></div>
+        <input type="range" data-key="video.occlusion_contrast" min="0" max="30" step="0.5">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>遮挡持续时长</label><span class="hint">秒</span><input type="number" data-key="video.occlusion_seconds" min="1" max="60" step="1"></div>
+        <input type="range" data-key="video.occlusion_seconds" min="1" max="60" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>同类报警冷却</label><span class="hint">秒</span><input type="number" data-key="video.cooldown_seconds" min="3" max="300" step="1"></div>
+        <input type="range" data-key="video.cooldown_seconds" min="3" max="300" step="1">
+      </div>
+
+      <div class="group-title">声音检测</div>
+      <label class="switch-row"><span>启用声音检测（本机麦克风）</span><input type="checkbox" data-check="audio.enabled"></label>
+      <div class="field">
+        <div class="field-head"><label>音频输入设备</label></div>
+        <select id="audioDevice" class="full"></select>
+      </div>
+      <div class="field">
+        <div class="field-head"><label>音量报警阈值</label><span class="hint">dBFS，越大越安静</span><input type="number" data-key="audio.threshold_db" min="-60" max="0" step="1"></div>
+        <input type="range" data-key="audio.threshold_db" min="-60" max="0" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>突发增强阈值</label><span class="hint">高于环境基线多少 dB</span><input type="number" data-key="audio.spike_db" min="3" max="40" step="1"></div>
+        <input type="range" data-key="audio.spike_db" min="3" max="40" step="1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>声音报警冷却</label><span class="hint">秒</span><input type="number" data-key="audio.cooldown_seconds" min="3" max="120" step="1"></div>
+        <input type="range" data-key="audio.cooldown_seconds" min="3" max="120" step="1">
+      </div>
+
+      <div class="group-title">区域数值识别</div>
+      <label class="switch-row"><span>启用数值识别（OCR）</span><input type="checkbox" data-check="ocr.enabled"></label>
+      <div class="field">
+        <div class="field-head"><label>识别区域</label><span class="hint" id="roiHint">未框选</span></div>
+        <div class="roi-actions">
+          <button id="btnSelectRoi" class="btn ghost small">在画面上框选</button>
+          <button id="btnClearRoi" class="btn ghost small">清除区域</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label>数值变化阈值</label><span class="hint">绝对差值</span><input type="number" data-key="ocr.change_threshold" min="0.01" max="10" step="0.01"></div>
+        <input type="range" data-key="ocr.change_threshold" min="0.01" max="10" step="0.01">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>识别间隔</label><span class="hint">秒</span><input type="number" data-key="ocr.interval" min="0.3" max="10" step="0.1"></div>
+        <input type="range" data-key="ocr.interval" min="0.3" max="10" step="0.1">
+      </div>
+      <div class="field">
+        <div class="field-head"><label>基准值</label><span class="hint">留空自动取首次识别值</span><input type="number" data-key="ocr.baseline" step="0.01" placeholder="自动"></div>
+      </div>
+      <button id="btnCalibrate" class="btn ghost small">重新校准基准（红绿 / 数值）</button>
+
+      <div class="save-bar">
+        <button id="btnResetSettings" class="btn ghost">恢复默认</button>
+        <button id="btnSaveSettings" class="btn primary">保存并生效</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

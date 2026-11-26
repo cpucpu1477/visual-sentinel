@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 虚拟环境（换电脑后请重新创建）
+.venv/
+venv/
+
+# 运行时数据：配置、报警数据库、截图、日志、浏览器配置
+data/
+
+# 测试与调试产物
+.screenshots/
+*.log
+*.zip
+
+# 编辑器 / 系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

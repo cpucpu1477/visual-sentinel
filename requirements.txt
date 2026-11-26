@@ -1,0 +1,6 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+opencv-python>=4.10
+numpy>=1.26
+sounddevice>=0.4.6
+rapidocr-onnxruntime>=1.2.3
